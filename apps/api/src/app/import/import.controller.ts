@@ -24,6 +24,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { DataSource } from '@prisma/client';
 import { StatusCodes, getReasonPhrase } from 'http-status-codes';
 
+import { ImportInProgressError } from './errors/import-in-progress.error';
 import { ImportDataDto } from './import-data.dto';
 import { ImportService } from './import.service';
 
@@ -70,6 +71,16 @@ export class ImportController {
       return { activities };
     } catch (error) {
       this.logger.error(error);
+
+      if (error instanceof ImportInProgressError) {
+        throw new HttpException(
+          {
+            error: getReasonPhrase(StatusCodes.CONFLICT),
+            message: [error.message]
+          },
+          StatusCodes.CONFLICT
+        );
+      }
 
       throw new HttpException(
         {

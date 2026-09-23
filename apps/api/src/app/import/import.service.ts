@@ -52,6 +52,7 @@ import { randomUUID } from 'node:crypto';
 
 import { ImportValidationError } from './errors/import-validation.error';
 import { ImportDataDto } from './import-data.dto';
+import { ImportLockService } from './import-lock.service';
 import { AssetProfileToCreate } from './interfaces/asset-profile-to-create.interface';
 
 @Injectable()
@@ -64,6 +65,7 @@ export class ImportService {
     private readonly dataGatheringService: DataGatheringService,
     private readonly dataProviderService: DataProviderService,
     private readonly exchangeRateDataService: ExchangeRateDataService,
+    private readonly importLockService: ImportLockService,
     private readonly marketDataService: MarketDataService,
     private readonly platformService: PlatformService,
     private readonly portfolioService: PortfolioService,
@@ -199,7 +201,27 @@ export class ImportService {
     return this.configurationService.get('MAX_ACTIVITIES_TO_IMPORT');
   }
 
-  public async import({
+  public async import(
+    args: Parameters<ImportService['importWithoutLock']>[0]
+  ): Promise<Activity[]> {
+    if (args.isDryRun) {
+      return this.importWithoutLock(args);
+    }
+
+    // Serialize the imports of a user (across all instances of the
+    // application), so that the detection of duplicates and the creation of
+    // the activities are atomic. Otherwise, concurrent identical imports (e.g.
+    // a retry after a timeout while the first request is still running) do
+    // not see the activities of each other and create duplicates.
+    return this.importLockService.runExclusively({
+      fn: () => {
+        return this.importWithoutLock(args);
+      },
+      userId: args.user.id
+    });
+  }
+
+  private async importWithoutLock({
     accountsWithBalancesDto,
     activitiesDto,
     assetProfilesWithMarketDataDto,

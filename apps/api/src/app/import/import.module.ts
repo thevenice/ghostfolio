@@ -18,6 +18,7 @@ import { TagModule } from '@ghostfolio/api/services/tag/tag.module';
 
 import { Module } from '@nestjs/common';
 
+import { ImportLockService } from './import-lock.service';
 import { ImportController } from './import.controller';
 import { ImportService } from './import.service';
 
@@ -43,6 +44,6 @@ import { ImportService } from './import.service';
     TransformDataSourceInRequestModule,
     TransformDataSourceInResponseModule
   ],
-  providers: [ImportService]
+  providers: [ImportLockService, ImportService]
 })
 export class ImportModule {}
