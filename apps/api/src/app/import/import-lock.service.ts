@@ -50,6 +50,12 @@ export class ImportLockService {
 
       await this.prismaService.$transaction(
         async (transaction) => {
+          // The transaction is idle while the function runs, so a server-side
+          // timeout would terminate it and release the lock prematurely.
+          // Disable these timeouts for this transaction only (via pg_settings,
+          // since transaction_timeout exists as of PostgreSQL 17 only).
+          await transaction.$queryRaw`SELECT set_config(name, '0', true) FROM pg_settings WHERE name IN ('idle_in_transaction_session_timeout', 'transaction_timeout')`;
+
           const [{ locked }] = await transaction.$queryRaw<
             { locked: boolean }[]
           >`SELECT pg_try_advisory_xact_lock(${IMPORT_LOCK_NAMESPACE}::integer, hashtext(${userId})) AS locked`;

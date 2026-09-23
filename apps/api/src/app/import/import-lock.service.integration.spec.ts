@@ -123,6 +123,55 @@ const databaseUrl = process.env.IMPORT_LOCK_TEST_DATABASE_URL;
       expect(await countRows()).toBe(3);
     });
 
+    it('keeps the lock if the server terminates idle transactions', async () => {
+      // The lock transaction is idle while the import runs on other
+      // connections, e.g. managed databases configure such a timeout
+      const [{ database }] = await prismaClients[0].$queryRawUnsafe<
+        { database: string }[]
+      >('SELECT current_database() AS database');
+
+      await prismaClients[0].$executeRawUnsafe(
+        `ALTER DATABASE "${database}" SET idle_in_transaction_session_timeout = '100ms'`
+      );
+
+      // New connections only pick up the database setting
+      const prismaClient = new PrismaClient({
+        adapter: new PrismaPg({ connectionString: databaseUrl })
+      });
+
+      try {
+        const importLockService = new ImportLockService(prismaClient as any);
+        importLockService.pollInterval = 10;
+
+        let active = 0;
+        let maxActive = 0;
+
+        await Promise.all(
+          Array.from({ length: 3 }, () => {
+            return importLockService.runExclusively({
+              fn: async () => {
+                active++;
+                maxActive = Math.max(maxActive, active);
+
+                await sleep(300);
+
+                active--;
+              },
+              userId: 'user-1'
+            });
+          })
+        );
+
+        expect(maxActive).toBe(1);
+      } finally {
+        await prismaClients[0].$executeRawUnsafe(
+          `ALTER DATABASE "${database}" RESET idle_in_transaction_session_timeout`
+        );
+
+        await prismaClient.$disconnect();
+      }
+    });
+
     it('releases the lock on a failure, so that a retry can proceed', async () => {
       const importLockService = new ImportLockService(prismaClients[0] as any);
 

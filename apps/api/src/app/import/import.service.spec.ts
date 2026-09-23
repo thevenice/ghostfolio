@@ -25,6 +25,11 @@ function createPrismaServiceWithAdvisoryLocks() {
         $queryRaw: async (_strings: TemplateStringsArray, ...values: any[]) => {
           await sleep(1);
 
+          if (values.length === 0) {
+            // set_config() of the timeouts
+            return [];
+          }
+
           const key = values.join(':');
 
           if (heldLocks.has(key)) {
